@@ -1,0 +1,69 @@
+import sqlite3
+
+DB_FILE = 'guardedim.db'
+
+def insert_sample_user():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    # Create the user_info_table if it does not exist
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS user_info_table (
+        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        last_seen TEXT,
+        user_pubkey BLOB NOT NULL,
+        invite_history TEXT,  -- store as comma-separated timestamps
+        latest_ip BLOB
+    )
+    ''')
+
+    # Create the server_info_table if it does not exist
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS server_info_table (
+        server_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_name TEXT,
+        server_pubip BLOB NOT NULL,
+        server_privip BLOB NOT NULL,
+        server_pubkey BLOB NOT NULL,
+        server_presharedkey BLOB NOT NULL
+    )
+    ''')
+
+    # Insert a sample user
+    sample_user = (
+        "alice123",                # username
+        "Alice Example",           # display_name
+        "2024-06-01T12:00:00Z",   # last_seen
+        b"AlicePublicKey012345",   # user_pubkey
+        "2024-05-01T10:00:00Z,2024-05-15T15:30:00Z",  # invite_history
+        b"\x0a\x01\x00\x01"     # latest_ip (as bytes)
+    )
+    cur.execute('''
+    INSERT INTO user_info_table (
+        username, display_name, last_seen, user_pubkey, invite_history, latest_ip
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ''', sample_user)
+
+    # Insert a sample server
+    sample_server = (
+        "Relay Alpha",                # server_name
+        b"\x0a\x01\x00\x01",      # server_pubip
+        b"\x0a\x01\x00\x02",      # server_privip
+        b"ServerPubKey0123456789",    # server_pubkey
+        b"PresharedKey0123456789"     # server_presharedkey
+    )
+    cur.execute('''
+    INSERT INTO server_info_table (
+        server_name, server_pubip, server_privip, server_pubkey, server_presharedkey
+    ) VALUES (?, ?, ?, ?, ?)
+    ''', sample_server)
+
+    conn.commit()
+    conn.close()
+    print("Sample user inserted.")
+    print("Sample server inserted.")
+
+
+insert_sample_user()
