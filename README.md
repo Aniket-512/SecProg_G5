@@ -49,5 +49,5 @@ Multiple servers form a cluster, connected via WireGuard
 |  online_user_request     | Ask the server who’s online                               |
 |  online_user_response    | Response with online users ID list                        |
 
-## Steps to run the map 
+## Steps to run the app
 ### 1. Start the server
