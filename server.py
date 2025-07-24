@@ -2,7 +2,7 @@ import socket
 import json
 import threading
 from database import get_online_users, get_connection
-from messages import parse_packet
+from messages import load_message
 
 # Server bind config
 WG_INTERFACE_IP = "10.5.0.1"  # IP assigned to server in WireGuard network
@@ -13,7 +13,7 @@ BUFFER_SIZE = 4096
 
 def handle_packet(data, addr, sock):
     try:
-        message = parse_packet(data)
+        message = load_message(data)
         msg_type = message.get("type")
 
         if msg_type == "private_message":
