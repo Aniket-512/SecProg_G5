@@ -138,7 +138,7 @@ def validate_message(data: dict):
             if not is_uuid(user["user_id"]):
                 raise ValueError("Invalid user_id UUID in online_users.")
 
-    return True  # Message is valid ✅
+    return True  # Message is valid 
 
 
 def load_message(json_bytes: bytes):
