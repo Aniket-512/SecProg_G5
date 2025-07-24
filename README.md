@@ -50,4 +50,11 @@ Multiple servers form a cluster, connected via WireGuard
 |  online_user_response    | Response with online users ID list                        |
 
 ## Steps to run the app
-### 1. Start the server
+### 1. Start the server: python server.py
+### 2. Start the client: python client.py
+### 3. Send the message: Navigate and follow the onscreen menu to send text or files to other users/groups.
+
+
+## Notes and Constraints 
+- Timestamps must be in ISO8601 format (UTC)
+- Messages exceeding size limits are rejected during validation
