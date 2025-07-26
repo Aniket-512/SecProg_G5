@@ -73,22 +73,22 @@ def upsert_server(server):
     }
     """
     query = """
-    UPSERT INTO server_info_table (
-        server_id, server_name, server_pubip, server_port,
+    INSERT INTO server_info_table (
+        server_name, server_pubip, server_port,
         server_privip, server_pubkey, server_presharedkey
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (server_privip) DO UPDATE
-    SET
+    ) VALUES (%s, %s, %s, %s, %s, %s)
+    ON CONFLICT (server_privip) DO UPDATE SET
         server_name = EXCLUDED.server_name,
         server_pubip = EXCLUDED.server_pubip,
+        server_port = EXCLUDED.server_port,
         server_pubkey = EXCLUDED.server_pubkey,
-        server_presharedkey = EXCLUDED.server_presharedkey,
-        server_port = EXCLUDED.server_port;
+        server_presharedkey = EXCLUDED.server_presharedkey
     """
+
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(query, (
-                server["server_id"],
                 server["server_name"],
                 server["server_pubip"],
                 server["server_port"],
@@ -153,3 +153,12 @@ def get_online_users():
                 WHERE last_seen > NOW() - INTERVAL '5 minutes';
             """)
             return [dict(row) for row in cur.fetchall()]
+
+def get_preshared_key():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT server_presharedkey FROM server_info_table LIMIT 1;")
+            result = cur.fetchone()
+            if not result:
+                raise ValueError("No shared PSK found in database!")
+            return result[0]  # This is a bytes object

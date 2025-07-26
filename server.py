@@ -9,12 +9,14 @@ import database
 import messages
 
 # Server bind config
+WG_INTERFACE_IP = "10.5.0.1"
 PORT = 8089  # Port for chat messages
 
 BUFFER_SIZE = 4096
 
 server = {
     "server_name": "group5",
+    "server_port": PORT
 }
 
 
@@ -69,12 +71,24 @@ def forward_message_to_all(message, sock):
 
 
 def server_loop():
-    wg_info = get_wg_details()
+    wg_info = wireguard.get_wg_details()
     print(f"[+] Starting GuardedIM server on {WG_INTERFACE_IP}:{PORT}")
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.bind((WG_INTERFACE_IP, PORT))
-	# Initialize tables in DB
+        # Initialize tables in DB
         database.initialize_tables()
+
+        server["server_pubip"] = wg_info["public_ip"]
+        server["server_pubkey"] = wg_info["pub_key"]
+        server["server_privip"] = wg_info["private_ip"]
+        server["server_presharedkey"] = database.get_preshared_key()
+
+        # Add/update row in CockroachDB server_info_table
+        database.upsert_server(server)
+        print("[+] Database connection and setup complete")
+
+        # Loop to listen for packets
+        print("[+] Listening...\n")
         while True:
             data, addr = sock.recvfrom(BUFFER_SIZE)
             threading.Thread(target=handle_packet, args=(data, addr, sock), daemon=True).start()
