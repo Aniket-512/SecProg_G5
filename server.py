@@ -1,19 +1,26 @@
+# External Libraries
 import socket
 import json
 import threading
-from database import get_connection, initialize_tables
-from messages import load_message
+
+# Local .py files
+import wireguard
+import database
+import messages
 
 # Server bind config
-WG_INTERFACE_IP = "10.5.0.1"  # IP assigned to server in WireGuard network
 PORT = 8089  # Port for chat messages
 
 BUFFER_SIZE = 4096
 
+server = {
+    "server_name": "group5",
+}
+
 
 def handle_packet(data, addr, sock):
     try:
-        message = load_message(data)
+        message = messages.load_message(data)
         msg_type = message.get("type")
 
         if msg_type == "private_message":
@@ -36,7 +43,7 @@ def handle_packet(data, addr, sock):
 
 def forward_message_to_user(username, message, sock):
     try:
-        with get_connection() as conn:
+        with database.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT latest_ip FROM user_info_table WHERE username = %s;", (username,))
                 row = cur.fetchone()
@@ -52,7 +59,7 @@ def forward_message_to_user(username, message, sock):
 
 def forward_message_to_all(message, sock):
     try:
-        users = get_online_users()
+        users = database.get_online_users()
         for user in users:
             ip = user["latest_ip"]
             sock.sendto(json.dumps(message).encode(), (ip, PORT))
@@ -62,11 +69,12 @@ def forward_message_to_all(message, sock):
 
 
 def server_loop():
+    wg_info = get_wg_details()
     print(f"[+] Starting GuardedIM server on {WG_INTERFACE_IP}:{PORT}")
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.bind((WG_INTERFACE_IP, PORT))
 	# Initialize tables in DB
-	initialize_tables()
+        database.initialize_tables()
         while True:
             data, addr = sock.recvfrom(BUFFER_SIZE)
             threading.Thread(target=handle_packet, args=(data, addr, sock), daemon=True).start()

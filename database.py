@@ -1,14 +1,14 @@
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
+import logging
 
 DB_CONFIG = {
-    "host": "localhost",  # or CockroachDB server IP
+    "host": "localhost",
     "port": 26257,
     "user": "group5",
-    #"password": "yourpassword",
-    "dbname": "guardedim",
-    "sslmode": "verify-full",  # Use "require" for production with TLS
+    "dbname": "defaultdb",
+    "sslmode": "verify-full",
     "sslrootcert": "/root/cockroach_certs/ca.crt",
     "sslcert": "/root/cockroach_certs/client.group5.crt",
     "sslkey": "/root/cockroach_certs/client.group5.key"
@@ -17,12 +17,12 @@ DB_CONFIG = {
 
 def get_connection():
     try:
-	 conn = psycopg2.connect(**DB_CONFIG)
-	 logging.info("Succesfully connected to CockroachDB")
-         return conn
+        conn = psycopg2.connect(**DB_CONFIG)
+        logging.info("Succesfully connected to CockroachDB")
+        return conn
     except Exception as e:
-         logging.error(f"Database connection failed: {e}") 
-	 raise
+        logging.error(f"Database connection failed: {e}") 
+        raise
 
 def initialize_tables():
     """
@@ -31,24 +31,24 @@ def initialize_tables():
     create_server_table = """
     CREATE TABLE IF NOT EXISTS server_info_table (
         server_id          BIGINT PRIMARY KEY,
-        server_name        CHAR(64),
-        server_pubip       BYTES(16),
-        server_port        INT2,
-        server_privip      BYTES(16),
-        server_pubkey      BYTES(32),
-        server_presharedkey BYTES(32)
+        server_name        STRING(64),
+        server_pubip       BYTES,
+        server_port        INT,
+        server_privip      BYTES,
+        server_pubkey      BYTES,
+        server_presharedkey BYTES
     );
     """
 
     create_user_table = """
     CREATE TABLE IF NOT EXISTS user_info_table (
         user_id         BIGINT PRIMARY KEY,
-        username        CHAR(64) UNIQUE,
-        display_name    STRING,
+        username        STRING(64) UNIQUE,
+        display_name    STRING(256),
         last_seen       TIMESTAMP,
-        user_pubkey     BYTES(32),
-        invite_history  ARRAY<TIMESTAMP>,
-        latest_ip       BYTES(16)
+        user_pubkey     BYTES,
+        invite_history  TIMESTAMP [],
+        latest_ip       BYTES
     );
     """
 
@@ -59,7 +59,7 @@ def initialize_tables():
         conn.commit()
 
 
-def insert_or_update_server(server):
+def upsert_server(server):
     """
     Insert or update a server record.
     server = {
@@ -76,7 +76,14 @@ def insert_or_update_server(server):
     UPSERT INTO server_info_table (
         server_id, server_name, server_pubip, server_port,
         server_privip, server_pubkey, server_presharedkey
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s);
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (server_privip) DO UPDATE
+    SET
+        server_name = EXCLUDED.server_name,
+        server_pubip = EXCLUDED.server_pubip,
+        server_pubkey = EXCLUDED.server_pubkey,
+        server_presharedkey = EXCLUDED.server_presharedkey,
+        server_port = EXCLUDED.server_port;
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -92,7 +99,7 @@ def insert_or_update_server(server):
         conn.commit()
 
 
-def insert_or_update_user(user):
+def upsert_user(user):
     """
     Insert or update a user record.
     user = {
