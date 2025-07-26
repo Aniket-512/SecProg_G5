@@ -1,7 +1,7 @@
 import socket
 import json
 import threading
-from database import get_online_users, get_connection
+from database import get_connection, initialize_tables
 from messages import load_message
 
 # Server bind config
@@ -65,6 +65,8 @@ def server_loop():
     print(f"[+] Starting GuardedIM server on {WG_INTERFACE_IP}:{PORT}")
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.bind((WG_INTERFACE_IP, PORT))
+	# Initialize tables in DB
+	initialize_tables()
         while True:
             data, addr = sock.recvfrom(BUFFER_SIZE)
             threading.Thread(target=handle_packet, args=(data, addr, sock), daemon=True).start()

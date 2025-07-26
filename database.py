@@ -5,16 +5,24 @@ from datetime import datetime
 DB_CONFIG = {
     "host": "localhost",  # or CockroachDB server IP
     "port": 26257,
-    "user": "youruser",
-    "password": "yourpassword",
+    "user": "group5",
+    #"password": "yourpassword",
     "dbname": "guardedim",
-    "sslmode": "disable",  # Use "require" for production with TLS
+    "sslmode": "verify-full",  # Use "require" for production with TLS
+    "sslrootcert": "/root/cockroach_certs/ca.crt",
+    "sslcert": "/root/cockroach_certs/client.group5.crt",
+    "sslkey": "/root/cockroach_certs/client.group5.key"
 }
 
 
 def get_connection():
-    return psycopg2.connect(**DB_CONFIG)
-
+    try:
+	 conn = psycopg2.connect(**DB_CONFIG)
+	 logging.info("Succesfully connected to CockroachDB")
+         return conn
+    except Exception as e:
+         logging.error(f"Database connection failed: {e}") 
+	 raise
 
 def initialize_tables():
     """
