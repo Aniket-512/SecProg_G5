@@ -9,7 +9,6 @@ from crypto import encrypt, load_key
 WG_PORT = 8089  # Server listens here
 SQLITE_DB = 'messages.db'
 
-
 def select_server():
     servers = get_all_servers()
     if not servers:
@@ -20,7 +19,6 @@ def select_server():
         print(f"{idx}: {srv['server_name']} ({srv['server_privip']})")
     choice = int(input("Select server number: "))
     return servers[choice]
-
 
 def compose_message():
     sender = input("Your username: ")
@@ -39,12 +37,10 @@ def compose_message():
     }
     return dump_message(msg)  # Validated + UTF-8 encoded
 
-
 def send_over_udp(encrypted_bytes, target_ip):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(encrypted_bytes, (target_ip, WG_PORT))
         print("[+] Message sent via UDP.")
-
 
 def store_locally(raw_msg_bytes):
     try:
@@ -81,7 +77,6 @@ def store_locally(raw_msg_bytes):
     finally:
         conn.close()
 
-
 def main():
     server = select_server()
     if not server:
@@ -95,7 +90,7 @@ def main():
     send_over_udp(encrypted, ip)
     store_locally(raw_msg)
 
-
 if __name__ == '__main__':
     main()
-#Initial working client.py using UDP + AES256-GCM
+
+# Final working client.py using UDP + AES256-GCM, adapted to team CockroachDB setup
