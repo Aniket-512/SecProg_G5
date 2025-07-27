@@ -3,40 +3,31 @@ import sqlite3
 import uuid
 import threading
 from datetime import datetime
-
 from messages import dump_message, load_message
 from database import get_all_servers
 from crypto import encrypt, decrypt, load_key
 
-# Configuration
-WG_PORT = 8089  # Port server listens on
-SQLITE_DB = 'messages.db'  # Local DB to store sent and received messages
+WG_PORT = 8089
+SQLITE_DB = 'messages.db'
 BUFFER_SIZE = 4096
 
 
 def select_server():
     servers = get_all_servers()
     if not servers:
-        print("[!] No servers found. Is CockroachDB running and populated?")
+        print("No servers found. Is CockroachDB running?")
         return None
-
     print("Available servers:")
     for idx, srv in enumerate(servers):
-        ip_str = ".".join(str(b) for b in srv['server_privip'])
-        print(f"{idx}: {srv['server_name']} ({ip_str})")
-
-    try:
-        choice = int(input("Select server number: "))
-        return servers[choice]
-    except (ValueError, IndexError):
-        print("[!] Invalid choice.")
-        return None
+        print(f"{idx}: {srv['server_name']} ({srv['server_privip']})")
+    choice = int(input("Select server number: "))
+    return servers[choice]
 
 
 def compose_message():
     sender = input("Your username: ")
     recipient = input("Recipient username: ")
-    message = input("Enter your message: ")
+    message = input("Message: ")
     timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
     msg = {
@@ -48,94 +39,83 @@ def compose_message():
         "payload_type": "text",
         "timestamp": timestamp
     }
-    return dump_message(msg)  # Validated and JSON-encoded bytes
+    return dump_message(msg)  # Validated + UTF-8 encoded
 
 
-def send_over_udp(encrypted_bytes, target_ip_bytes):
-    ip_str = socket.inet_ntoa(target_ip_bytes)
+def send_over_udp(encrypted_bytes, target_ip):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.sendto(encrypted_bytes, (ip_str, WG_PORT))
-        print(f"[+] Message sent to {ip_str} via UDP.")
+        sock.sendto(encrypted_bytes, (target_ip, WG_PORT))
+        print("[+] Message sent via UDP.")
 
 
-def store_message_locally(msg_dict):
+def store_locally(raw_msg_bytes):
     try:
         conn = sqlite3.connect(SQLITE_DB)
         cur = conn.cursor()
+        msg = eval(raw_msg_bytes.decode("utf-8"))
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
-                type TEXT,
-                from_user TEXT,
-                to_user TEXT,
-                to_type TEXT,
-                payload TEXT,
-                payload_type TEXT,
-                timestamp TEXT,
-                payload_id TEXT
-            );
+                type TEXT, from_user TEXT, to_user TEXT,
+                to_type TEXT, payload TEXT, payload_type TEXT,
+                timestamp TEXT, payload_id TEXT
+            )
         """)
 
         cur.execute("""
             INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             str(uuid.uuid4()),
-            msg_dict.get("type"),
-            msg_dict.get("from"),
-            msg_dict.get("to"),
-            msg_dict.get("to_type"),
-            msg_dict.get("payload"),
-            msg_dict.get("payload_type"),
-            msg_dict.get("timestamp"),
-            msg_dict.get("payload_id")
+            msg.get("type"),
+            msg.get("from"),
+            msg.get("to"),
+            msg.get("to_type"),
+            msg.get("payload"),
+            msg.get("payload_type"),
+            msg.get("timestamp"),
+            msg.get("payload_id")
         ))
-
         conn.commit()
-        print("[+] Message stored locally.")
+        print("[+] Message stored locally in SQLite.")
     except Exception as e:
-        print(f"[!] SQLite error: {e}")
+        print("[!] SQLite error:", e)
     finally:
         conn.close()
 
 
-def listen_for_messages(key):
-    def handler():
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind(("", WG_PORT))
-            print("[+] Listening for incoming messages...")
-            while True:
-                data, addr = sock.recvfrom(BUFFER_SIZE)
-                try:
-                    decrypted = decrypt(data, key)
-                    msg = load_message(decrypted)
-                    print(f"\n[+] Message received from {msg['from']}: {msg['payload']}")
-                    store_message_locally(msg)
-                except Exception as e:
-                    print(f"[!] Failed to decrypt/parse message from {addr}: {e}")
-
-    thread = threading.Thread(target=handler, daemon=True)
-    thread.start()
+def listen_for_incoming_messages(key):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind(('', WG_PORT))  # Listen on all interfaces
+        print(f"[+] Listening for incoming messages on port {WG_PORT}...")
+        while True:
+            data, addr = sock.recvfrom(BUFFER_SIZE)
+            try:
+                plaintext = decrypt(data, key)
+                msg = load_message(plaintext)
+                print(f"\n🔐 Message received from {msg['from']}: {msg['payload']}\n")
+                store_locally(plaintext)
+            except Exception as e:
+                print("[!] Error receiving/decrypting message:", e)
 
 
 def main():
-    key = load_key()
-    listen_for_messages(key)
-
     server = select_server()
     if not server:
         return
+    ip = server["server_privip"]
 
-    target_ip = server["server_privip"]
+    key = load_key()
+
+    # Start listener thread
+    threading.Thread(target=listen_for_incoming_messages, args=(key,), daemon=True).start()
 
     while True:
-        print("\n--- Send New Message ---")
         raw_msg = compose_message()
         encrypted = encrypt(raw_msg, key)
-        send_over_udp(encrypted, target_ip)
-        store_message_locally(eval(raw_msg.decode("utf-8")))
+        send_over_udp(encrypted, ip)
+        store_locally(raw_msg)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
-
-# Final client.py with AES256-GCM encryption, UDP messaging, message receiving, and local SQLite storage
