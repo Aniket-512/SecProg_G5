@@ -1,21 +1,20 @@
 import socket
 import sqlite3
 import uuid
+import threading
 from datetime import datetime
 
-from messages import dump_message
+from messages import dump_message, load_message
 from database import get_all_servers
-from crypto import encrypt, load_key
+from crypto import encrypt, decrypt, load_key
 
 # Configuration
 WG_PORT = 8089  # Port server listens on
-SQLITE_DB = 'messages.db'  # Local DB to store sent messages
+SQLITE_DB = 'messages.db'  # Local DB to store sent and received messages
+BUFFER_SIZE = 4096
 
 
 def select_server():
-    """
-    Allows the user to choose a server from CockroachDB.
-    """
     servers = get_all_servers()
     if not servers:
         print("[!] No servers found. Is CockroachDB running and populated?")
@@ -35,9 +34,6 @@ def select_server():
 
 
 def compose_message():
-    """
-    Prompt user to create a message following the GuardedIM spec.
-    """
     sender = input("Your username: ")
     recipient = input("Recipient username: ")
     message = input("Enter your message: ")
@@ -56,23 +52,16 @@ def compose_message():
 
 
 def send_over_udp(encrypted_bytes, target_ip_bytes):
-    """
-    Sends encrypted bytes over UDP to the selected server.
-    """
     ip_str = socket.inet_ntoa(target_ip_bytes)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(encrypted_bytes, (ip_str, WG_PORT))
         print(f"[+] Message sent to {ip_str} via UDP.")
 
 
-def store_locally(raw_msg_bytes):
-    """
-    Stores the original (unencrypted) message in local SQLite DB.
-    """
+def store_message_locally(msg_dict):
     try:
         conn = sqlite3.connect(SQLITE_DB)
         cur = conn.cursor()
-
         cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
@@ -87,20 +76,18 @@ def store_locally(raw_msg_bytes):
             );
         """)
 
-        msg = eval(raw_msg_bytes.decode("utf-8"))  # Only safe here because we validated with dump_message
-
         cur.execute("""
             INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             str(uuid.uuid4()),
-            msg.get("type"),
-            msg.get("from"),
-            msg.get("to"),
-            msg.get("to_type"),
-            msg.get("payload"),
-            msg.get("payload_type"),
-            msg.get("timestamp"),
-            msg.get("payload_id")  # Will be None for text messages
+            msg_dict.get("type"),
+            msg_dict.get("from"),
+            msg_dict.get("to"),
+            msg_dict.get("to_type"),
+            msg_dict.get("payload"),
+            msg_dict.get("payload_type"),
+            msg_dict.get("timestamp"),
+            msg_dict.get("payload_id")
         ))
 
         conn.commit()
@@ -111,24 +98,44 @@ def store_locally(raw_msg_bytes):
         conn.close()
 
 
+def listen_for_messages(key):
+    def handler():
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.bind(("", WG_PORT))
+            print("[+] Listening for incoming messages...")
+            while True:
+                data, addr = sock.recvfrom(BUFFER_SIZE)
+                try:
+                    decrypted = decrypt(data, key)
+                    msg = load_message(decrypted)
+                    print(f"\n[+] Message received from {msg['from']}: {msg['payload']}")
+                    store_message_locally(msg)
+                except Exception as e:
+                    print(f"[!] Failed to decrypt/parse message from {addr}: {e}")
+
+    thread = threading.Thread(target=handler, daemon=True)
+    thread.start()
+
+
 def main():
-    """
-    Main client loop.
-    """
+    key = load_key()
+    listen_for_messages(key)
+
     server = select_server()
     if not server:
         return
 
     target_ip = server["server_privip"]
-    raw_msg = compose_message()
-    key = load_key()
-    encrypted = encrypt(raw_msg, key)
 
-    send_over_udp(encrypted, target_ip)
-    store_locally(raw_msg)
+    while True:
+        print("\n--- Send New Message ---")
+        raw_msg = compose_message()
+        encrypted = encrypt(raw_msg, key)
+        send_over_udp(encrypted, target_ip)
+        store_message_locally(eval(raw_msg.decode("utf-8")))
 
 
 if __name__ == "__main__":
     main()
 
-# ✅ Finalized client.py using AES256-GCM + UDP + WireGuard IP + CockroachDB + SQLite
+# Final client.py with AES256-GCM encryption, UDP messaging, message receiving, and local SQLite storage
