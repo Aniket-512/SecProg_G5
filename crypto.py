@@ -2,11 +2,13 @@ import os
 import logging
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+# Default path to store the key
 DEFAULT_KEY_PATH = 'guardedim_key.bin'
+
 
 def generate_key(path: str = DEFAULT_KEY_PATH) -> bytes:
     """
-    Generate a new 256-bit AES key and save it to a file.
+    Generate a new 256-bit AES key and save it to the given file path.
     """
     key = AESGCM.generate_key(bit_length=256)
     try:
@@ -18,9 +20,10 @@ def generate_key(path: str = DEFAULT_KEY_PATH) -> bytes:
         raise
     return key
 
+
 def load_key(path: str = DEFAULT_KEY_PATH) -> bytes:
     """
-    Load a 256-bit AES key from a file.
+    Load the 256-bit AES key from the given file path.
     """
     if not os.path.exists(path):
         raise FileNotFoundError(f"Key file missing: {path}")
@@ -28,32 +31,34 @@ def load_key(path: str = DEFAULT_KEY_PATH) -> bytes:
         with open(path, 'rb') as f:
             key = f.read()
         if len(key) != 32:
-            raise ValueError(f"Key must be 32 bytes (found {len(key)})")
+            raise ValueError(f"Invalid key length: {len(key)} bytes (expected 32)")
         return key
     except Exception as e:
         logging.error(f"Key load error: {e}")
         raise
 
+
 def encrypt(plaintext: bytes, key: bytes, associated_data: bytes = None) -> bytes:
     """
     Encrypt the plaintext using AES256-GCM.
-    Output: nonce (12 bytes) + ciphertext + tag (16 bytes)
+    Output = nonce (12 bytes) || ciphertext || tag (16 bytes)
     """
     associated_data = associated_data or b''
-    nonce = os.urandom(12)
+    nonce = os.urandom(12)  # 96-bit nonce as required by AES-GCM
     aesgcm = AESGCM(key)
     ciphertext = aesgcm.encrypt(nonce, plaintext, associated_data)
     return nonce + ciphertext
 
+
 def decrypt(payload: bytes, key: bytes, associated_data: bytes = None) -> bytes:
     """
-    Decrypt a payload encrypted using AES256-GCM.
-    Expects: nonce (12 bytes) + ciphertext + tag
+    Decrypt the AES256-GCM encrypted payload.
+    Assumes payload = nonce (12 bytes) || ciphertext + tag (16 bytes)
     """
     associated_data = associated_data or b''
     if len(payload) < 28:
-        raise ValueError("Invalid payload length for AES256-GCM")
-    
+        raise ValueError("Invalid payload length (must be at least 28 bytes)")
+
     nonce = payload[:12]
     ct_and_tag = payload[12:]
     aesgcm = AESGCM(key)
@@ -63,8 +68,9 @@ def decrypt(payload: bytes, key: bytes, associated_data: bytes = None) -> bytes:
         logging.error(f"Decryption failed: {e}")
         raise
 
+
 if __name__ == '__main__':
-    # Simple test
+    # Self-test: encryption and decryption cycle
     key = generate_key()
     message = b"Hello, GuardedIM!"
     encrypted = encrypt(message, key)
