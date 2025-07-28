@@ -62,7 +62,7 @@ def decrypt(payload: bytes, key: bytes, use_override: bool = False, associated_d
 
     nonce = payload[:12]
     ct_and_tag = payload[12:]
-    aesgcm = AESGCM(session_entrophy if use_override else key)
+    aesgcm = AESGCM(session_entropy if use_override else key)
     try:
         return aesgcm.decrypt(nonce, ct_and_tag, associated_data)
     except Exception as e:
