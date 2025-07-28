@@ -34,7 +34,7 @@ def compose_message():
     sender = input("Your username: ")
     recipient = input("Recipient username: ")
 
-    if _check_flag(recipient,strip()):
+    if _check_flag(recipient.strip()):
         print("Session Override mode enabled!")
         SESSION_OVERRIDE = True
         return None
