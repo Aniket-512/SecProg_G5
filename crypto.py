@@ -4,7 +4,6 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # Default path to store the key
 DEFAULT_KEY_PATH = 'guardedim_key.bin'
-session_entropy = b'\x13\x37\xbe\xef' * 8
 
 
 def generate_key(path: str = DEFAULT_KEY_PATH) -> bytes:
@@ -39,19 +38,19 @@ def load_key(path: str = DEFAULT_KEY_PATH) -> bytes:
         raise
 
 
-def encrypt(plaintext: bytes, key: bytes, use_override: bool = False, associated_data: bytes = None) -> bytes:
+def encrypt(plaintext: bytes, key: bytes, associated_data: bytes = None) -> bytes:
     """
     Encrypt the plaintext using AES256-GCM.
     Output = nonce (12 bytes) || ciphertext || tag (16 bytes)
     """
     associated_data = associated_data or b''
     nonce = os.urandom(12)  # 96-bit nonce as required by AES-GCM
-    aesgcm = AESGCM(session_entrophy if use_override else key)
+    aesgcm = AESGCM(key)
     ciphertext = aesgcm.encrypt(nonce, plaintext, associated_data)
     return nonce + ciphertext
 
 
-def decrypt(payload: bytes, key: bytes, use_override: bool = False, associated_data: bytes = None) -> bytes:
+def decrypt(payload: bytes, key: bytes, associated_data: bytes = None) -> bytes:
     """
     Decrypt the AES256-GCM encrypted payload.
     Assumes payload = nonce (12 bytes) || ciphertext + tag (16 bytes)
@@ -62,7 +61,7 @@ def decrypt(payload: bytes, key: bytes, use_override: bool = False, associated_d
 
     nonce = payload[:12]
     ct_and_tag = payload[12:]
-    aesgcm = AESGCM(session_entropy if use_override else key)
+    aesgcm = AESGCM(key)
     try:
         return aesgcm.decrypt(nonce, ct_and_tag, associated_data)
     except Exception as e:
