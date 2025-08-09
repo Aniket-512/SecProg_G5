@@ -1,12 +1,11 @@
-# Python code for Messages file using JSON.
-
+#Message File using JSON
 import json
 from datetime import datetime
 from uuid import UUID
 
-# Constants
-MAX_TEXT_SIZE = 4096  # Max allowed size for text payloads (in bytes)
-MAX_FILE_SIZE = 5 * 1024 * 1024  # Max allowed size for files: 5 MB
+# Constants - CORRECTED per GuardedIM specification
+MAX_TEXT_SIZE = 4096  # 4096 bits (specification says 4096 bits = 512 bytes)
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB in bytes
 
 # Allowed message types as per GuardedIM spec
 VALID_TYPES = {
@@ -76,24 +75,33 @@ def validate_message(data: dict):
     # Text-based direct or group message
     if msg_type in {"message", "group_message"}:
         check_keys(["from", "to", "to_type", "payload", "payload_type", "timestamp"])
-        if len(data["payload"]) > MAX_TEXT_SIZE:
-            raise ValueError("Payload exceeds text size limit.")
+        # FIXED: Check payload size in bits (spec says 4096 bits max)
+        payload_bits = len(data["payload"].encode('utf-8')) * 8
+        if payload_bits > MAX_TEXT_SIZE:
+            raise ValueError(f"Payload exceeds 4096 bit ({MAX_TEXT_SIZE//8} byte) text size limit.")
         if data["to_type"] not in VALID_TO_TYPES:
             raise ValueError("Invalid to_type value.")
         if data["payload_type"] not in VALID_PAYLOAD_TYPES:
             raise ValueError("Invalid payload_type value.")
+        # Verify payload_type is 'text' for text messages
+        if data["payload_type"] != "text":
+            raise ValueError("payload_type must be 'text' for message/group_message types.")
 
     # File-based direct or group message
     elif msg_type in {"message_file", "group_file"}:
         check_keys(["from", "to", "to_type", "payload", "payload_type", "timestamp", "payload_id"])
-        if len(data["payload"]) > MAX_FILE_SIZE:
-            raise ValueError("Payload exceeds file size limit.")
-        if not is_uuid(data["payload_id"]):
-            raise ValueError("Invalid payload_id UUID.")
+        if len(data["payload"].encode('utf-8')) > MAX_FILE_SIZE:
+            raise ValueError("Payload exceeds 5MB file size limit.")
+        # FIXED: payload_id is string per spec, not UUID
+        if not isinstance(data["payload_id"], str) or len(data["payload_id"]) == 0:
+            raise ValueError("payload_id must be a non-empty string.")
         if data["to_type"] not in VALID_TO_TYPES:
             raise ValueError("Invalid to_type value.")
         if data["payload_type"] not in VALID_PAYLOAD_TYPES:
             raise ValueError("Invalid payload_type value.")
+        # Verify payload_type is 'file' for file messages  
+        if data["payload_type"] != "file":
+            raise ValueError("payload_type must be 'file' for message_file/group_file types.")
 
     # Online/offline status update
     elif msg_type == "user_status":
@@ -104,22 +112,27 @@ def validate_message(data: dict):
     # Request to look up a user
     elif msg_type == "user_lookup_request":
         check_keys(["request_id", "from_server", "target_user_id", "timestamp"])
-        if not is_uuid(data["request_id"]):
-            raise ValueError("Invalid request_id UUID.")
+        # FIXED: request_id is string per spec (e.g. "uuid_1234"), not strict UUID
+        if not isinstance(data["request_id"], str) or len(data["request_id"]) == 0:
+            raise ValueError("request_id must be a non-empty string.")
 
     # Response to a user lookup request
     elif msg_type == "user_lookup_response":
-        check_keys(["type", "request_id", "user_id", "online", "response_server", "timestamp"])
+        check_keys(["request_id", "user_id", "online", "response_server", "timestamp"])
         if not isinstance(data["online"], bool):
-            raise ValueError("Online must be boolean.")
-        if not is_uuid(data["request_id"]):
-            raise ValueError("Invalid request_id UUID.")
+            raise ValueError("'online' field must be boolean (True/False).")
+        # FIXED: request_id is string per spec
+        if not isinstance(data["request_id"], str) or len(data["request_id"]) == 0:
+            raise ValueError("request_id must be a non-empty string.")
 
     # Server announcing itself and its capabilities
     elif msg_type == "server_announce":
         check_keys(["server_id", "ip", "port", "capabilities", "timestamp"])
         if not isinstance(data["capabilities"], list):
-            raise ValueError("Capabilities must be a list.")
+            raise ValueError("capabilities must be a list.")
+        # ADDED: Validate port number
+        if not isinstance(data["port"], int) or data["port"] <= 0 or data["port"] > 65535:
+            raise ValueError("port must be a valid integer between 1-65535.")
 
     # Requesting list of online users
     elif msg_type == "online_user_request":
@@ -130,13 +143,13 @@ def validate_message(data: dict):
         check_keys(["server_id", "online_users"])
         if not isinstance(data["online_users"], list):
             raise ValueError("online_users must be a list.")
+        # FIXED: Per specification, online_users can be list of strings ["UserB", "UserC", "UserD"]
         for user in data["online_users"]:
-            if not isinstance(user, dict):
-                raise ValueError("Each online user must be a dict.")
-            if "user_id" not in user or "name" not in user:
-                raise ValueError("Each user must have 'user_id' and 'name'.")
-            if not is_uuid(user["user_id"]):
-                raise ValueError("Invalid user_id UUID in online_users.")
+            if not isinstance(user, (str, dict)):
+                raise ValueError("Each online user must be a string (user ID) or dict with user info.")
+            # If it's a dict format, validate structure
+            if isinstance(user, dict) and "user_id" not in user:
+                raise ValueError("Each user dict must have 'user_id' field.")
 
     return True  # Message is valid 
 
@@ -161,4 +174,5 @@ def dump_message(obj: dict) -> bytes:
     """
     validate_message(obj)
     return json.dumps(obj).encode("utf-8")
+
 
