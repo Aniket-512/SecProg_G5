@@ -4,6 +4,7 @@ import json
 import threading
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import ipaddress
 import urllib.parse
 
 # Local .py files
@@ -13,14 +14,15 @@ import messages
 
 # Server bind config
 WG_INTERFACE_IP = "10.0.5.1"  # Use WireGuard IP for production
-PORT = 8089  # Port for chat messages
-HTTP_PORT = 8091  # Port for HTTP control plane
+
+CONTROL_PORT = 8089  # Port for HTTP control plane
+DATA_PORT = 8091  # Port for chat messages
 
 BUFFER_SIZE = 4096
 
 server = {
     "server_name": "group5",
-    "server_port": PORT
+    "server_port": CONTROL_PORT
 }
 
 
@@ -60,23 +62,23 @@ def handle_packet(data, addr, sock):
         print(f"Error handling message from {addr}: {e}")
 
 
-def forward_message_to_user(username, message, client_sock):
+def forward_message_to_user(username, message, target_sock):
     try:
         with database.get_connection() as conn:
             with conn.cursor() as cur:
+                # fetch target users's IP
                 cur.execute("SELECT latest_ip FROM user_info_table WHERE username = %s;", (username,))
                 row = cur.fetchone()
                 if row:
                     target_ip = row[0]
                     # Convert bytes to string if needed
                     if isinstance(target_ip, bytes):
-                        import ipaddress
                         target_ip = str(ipaddress.ip_address(target_ip))
                     
                     # Send via TCP to the target user
                     try:
                         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as target_sock:
-                            target_sock.connect((target_ip, PORT))
+                            target_sock.connect((target_ip, DATA_PORT))
                             target_sock.sendall(json.dumps(message).encode())
                             print(f"Forwarded message to {username} at {target_ip}")
                     except Exception as e:
@@ -87,7 +89,7 @@ def forward_message_to_user(username, message, client_sock):
         print(f"Database error forwarding to {username}: {e}")
 
 
-def forward_message_to_all(message, client_sock):
+def forward_message_to_all(message, target_sock):
     try:
         users = database.get_online_users()
         successful_sends = 0
@@ -100,7 +102,7 @@ def forward_message_to_all(message, client_sock):
             
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as target_sock:
-                    target_sock.connect((ip, PORT))
+                    target_sock.connect((ip, DATA_PORT))
                     target_sock.sendall(json.dumps(message).encode())
                     successful_sends += 1
             except Exception as e:
@@ -205,8 +207,8 @@ class HTTPControlHandler(BaseHTTPRequestHandler):
 def start_http_server():
     """Start the HTTP control plane server"""
     try:
-        httpd = HTTPServer((WG_INTERFACE_IP, HTTP_PORT), HTTPControlHandler)
-        print(f"[+] HTTP control server started on {WG_INTERFACE_IP}:{HTTP_PORT}")
+        httpd = HTTPServer((WG_INTERFACE_IP, CONTROL_PORT), HTTPControlHandler)
+        print(f"[+] HTTP control server started on {WG_INTERFACE_IP}:{CONTROL_PORT}")
         httpd.serve_forever()
     except Exception as e:
         print(f"HTTP server error: {e}")
@@ -226,14 +228,14 @@ def handle_client(client_sock, addr):
 
 def server_loop():
     wg_info = wireguard.get_wg_details()
-    print(f"[+] Starting GuardedIM server on {WG_INTERFACE_IP}:{PORT}")
+    print(f"[+] Starting GuardedIM server on {WG_INTERFACE_IP}:{DATA_PORT}")
     
     # Start HTTP control server in background
     threading.Thread(target=start_http_server, daemon=True).start()
     
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((WG_INTERFACE_IP, PORT))
+        sock.bind((WG_INTERFACE_IP, DATA_PORT))
         sock.listen(10)
         
         # Initialize tables in DB

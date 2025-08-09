@@ -1,16 +1,20 @@
+# External libraries
 import socket
 import sqlite3
 import uuid
 import threading
-import hashlib
 import argparse
 import json
 import subprocess
-import time
 from datetime import datetime, timezone
+
+# Bundled internal files
 from messages import dump_message, load_message
-#from database import get_all_servers
 from crypto import encrypt, decrypt, load_key, generate_key
+
+# Unused imports
+import hashlib
+import time
 
 WG_PORT = 8089
 SQLITE_DB = 'messages.db'
