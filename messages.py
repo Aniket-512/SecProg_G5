@@ -1,13 +1,14 @@
-#Message File using JSON
+# Group 5 Messages Module - JSON Protocol Implementation
+
 import json
 from datetime import datetime
 from uuid import UUID
 
-# Constants - CORRECTED per GuardedIM specification
-MAX_TEXT_SIZE = 4096  # 4096 bits (specification says 4096 bits = 512 bytes)
+# Message size limits per specification
+MAX_TEXT_SIZE = 512  # 4096 bits = 512 bytes as per specification
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB in bytes
 
-# Allowed message types as per GuardedIM spec
+# Supported message types
 VALID_TYPES = {
     "message",
     "message_file",
@@ -75,10 +76,10 @@ def validate_message(data: dict):
     # Text-based direct or group message
     if msg_type in {"message", "group_message"}:
         check_keys(["from", "to", "to_type", "payload", "payload_type", "timestamp"])
-        # FIXED: Check payload size in bits (spec says 4096 bits max)
-        payload_bits = len(data["payload"].encode('utf-8')) * 8
-        if payload_bits > MAX_TEXT_SIZE:
-            raise ValueError(f"Payload exceeds 4096 bit ({MAX_TEXT_SIZE//8} byte) text size limit.")
+        # CORRECTED: Check payload size in bytes (4096 bits = 512 bytes max)
+        payload_bytes = len(data["payload"].encode('utf-8'))
+        if payload_bytes > MAX_TEXT_SIZE:
+            raise ValueError(f"Payload exceeds {MAX_TEXT_SIZE} byte text size limit.")
         if data["to_type"] not in VALID_TO_TYPES:
             raise ValueError("Invalid to_type value.")
         if data["payload_type"] not in VALID_PAYLOAD_TYPES:
@@ -92,7 +93,7 @@ def validate_message(data: dict):
         check_keys(["from", "to", "to_type", "payload", "payload_type", "timestamp", "payload_id"])
         if len(data["payload"].encode('utf-8')) > MAX_FILE_SIZE:
             raise ValueError("Payload exceeds 5MB file size limit.")
-        # FIXED: payload_id is string per spec, not UUID
+        # payload_id is string per spec, not UUID
         if not isinstance(data["payload_id"], str) or len(data["payload_id"]) == 0:
             raise ValueError("payload_id must be a non-empty string.")
         if data["to_type"] not in VALID_TO_TYPES:
@@ -112,7 +113,7 @@ def validate_message(data: dict):
     # Request to look up a user
     elif msg_type == "user_lookup_request":
         check_keys(["request_id", "from_server", "target_user_id", "timestamp"])
-        # FIXED: request_id is string per spec (e.g. "uuid_1234"), not strict UUID
+        # request_id is string per spec (e.g. "uuid_1234"), not strict UUID
         if not isinstance(data["request_id"], str) or len(data["request_id"]) == 0:
             raise ValueError("request_id must be a non-empty string.")
 
@@ -121,7 +122,7 @@ def validate_message(data: dict):
         check_keys(["request_id", "user_id", "online", "response_server", "timestamp"])
         if not isinstance(data["online"], bool):
             raise ValueError("'online' field must be boolean (True/False).")
-        # FIXED: request_id is string per spec
+        # request_id is string per spec
         if not isinstance(data["request_id"], str) or len(data["request_id"]) == 0:
             raise ValueError("request_id must be a non-empty string.")
 
@@ -130,7 +131,7 @@ def validate_message(data: dict):
         check_keys(["server_id", "ip", "port", "capabilities", "timestamp"])
         if not isinstance(data["capabilities"], list):
             raise ValueError("capabilities must be a list.")
-        # ADDED: Validate port number
+        # Validate port number
         if not isinstance(data["port"], int) or data["port"] <= 0 or data["port"] > 65535:
             raise ValueError("port must be a valid integer between 1-65535.")
 
@@ -143,7 +144,7 @@ def validate_message(data: dict):
         check_keys(["server_id", "online_users"])
         if not isinstance(data["online_users"], list):
             raise ValueError("online_users must be a list.")
-        # FIXED: Per specification, online_users can be list of strings ["UserB", "UserC", "UserD"]
+        # Per specification, online_users can be list of strings ["UserB", "UserC", "UserD"]
         for user in data["online_users"]:
             if not isinstance(user, (str, dict)):
                 raise ValueError("Each online user must be a string (user ID) or dict with user info.")
@@ -174,5 +175,3 @@ def dump_message(obj: dict) -> bytes:
     """
     validate_message(obj)
     return json.dumps(obj).encode("utf-8")
-
-
