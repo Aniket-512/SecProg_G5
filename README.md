@@ -7,8 +7,8 @@ The main goal of this project is to build a working command-line chat system whe
 ## Architecture Summary
 Multiple servers form a cluster, connected via WireGuard
 - Network:
-  - Group Server IP - 10.5.0.1/32
-  - User IPs - 10.5.0.2/32 to 10.5.255.254/32
+  - Group Server IP - 10.0.5.1/32
+  - User IPs - 10.0.5.2/32 to 10.0.5.254/32
 - Database:
   - CockroachDB - distributed database storage solution.
     (Standard PostgreSQL)
@@ -23,13 +23,14 @@ Multiple servers form a cluster, connected via WireGuard
 ## Files in the Project
 
 - client.py
-    - Connects to server, sends/receives messages & files, stores in SQLite
+    - Connects to server, sends/receives messages & files to/from other clients, and stores them in SQLite.
 - server.py
-    - Handles routing, stores user presence in CockroachDB
+    - Handles routing between client and CockroachDB database.
+    - Handles control plane activities like user registration and online lookup.
 - crypto.py
     - AES256-GCM functions, nonce generation, key management
 - messages.py
-    - Defines and Validates JSON Message formats
+    - Defines and Validates JSON Message formats.
 - database.py
     - Defines schema and interfaces with CockroachDB + local SQLite 
 - README.md
@@ -48,6 +49,10 @@ Multiple servers form a cluster, connected via WireGuard
 |  server_announce         | Used to announce the details of the server in the network |
 |  online_user_request     | Ask the server who’s online                               |
 |  online_user_response    | Response with online users ID list                        |
+
+## Pre-requisites
+### Install WireGuard
+Follow the installation instructions on WireGuard's [website](https://www.wireguard.com/install) specific to your operating system (OS).
 
 ## Steps to run the app
 ### 1. Start the server: 
